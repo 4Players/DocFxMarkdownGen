@@ -288,7 +288,7 @@ await Parallel.ForEachAsync(items, async (item, _) =>
         str.AppendLine($"# {item.Type} {HtmlEscape(item.Name)}");
         str.AppendLine(GetSummary(item.Summary, isGroupedType)?.Trim());
         str.AppendLine();
-        str.AppendLine($"###### **Assembly**: {item.Assemblies[0]}.dll");
+        //str.AppendLine($"###### **Assembly**: {item.Assemblies[0]}.dll");
         Declaration(str, item);
         // do not when it is only System.Object
         if (item.Inheritance?.Length > 1)
