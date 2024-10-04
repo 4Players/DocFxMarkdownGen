@@ -502,6 +502,14 @@ await Parallel.ForEachAsync(items, async (item, _) =>
             ? Path.Join(config.OutputPath, item.Namespace, item.Name.Replace('<', '`').Replace('>', '`')) + ".md"
             : Path.Join(config.OutputPath, item.Namespace, GetTypePathPart(item.Type),
                 item.Name.Replace('<', '`').Replace('>', '`')) + ".md";
+        
+        if (item.Namespace == "Global")
+        {
+            path = !isGroupedType
+                ? Path.Join(config.OutputPath, item.Name.Replace('<', '`').Replace('>', '`')) + ".md"
+                : Path.Join(config.OutputPath, GetTypePathPart(item.Type),
+                    item.Name.Replace('<', '`').Replace('>', '`')) + ".md";
+        }
 
         // create directory if it doesn't exist
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -552,11 +560,12 @@ await Parallel.ForEachAsync(items, async (item, _) =>
     str.AppendLine("# API Index");
     str.AppendLine("## Namespaces");
     foreach (var @namespace in items.Where(i => i.Type == "Namespace").OrderBy(i => i.Name))
-        str.AppendLine($"* {HtmlEscape(Link(@namespace.Uid, false, linkFromIndex: true))}");
+        if (@namespace.Uid != "Global")
+            str.AppendLine($"* {HtmlEscape(Link(@namespace.Uid, false, linkFromIndex: true))}");
     str.AppendLine();
     str.AppendLine("---");
     str.AppendLine(
-        $"Generated using [DocFxMarkdownGen](https://github.com/Jan0660/DocFxMarkdownGen) v{versionString}.");
+        $"Generated using [DocFxMarkdownGen](https://github.com/4Players/DocFxMarkdownGen) v{versionString}.");
     await File.WriteAllTextAsync(Path.Join(config.OutputPath, $"index.md"), str.ToString());
 }
 Info($"Markdown finished in {stopwatch.ElapsedMilliseconds}ms.");
