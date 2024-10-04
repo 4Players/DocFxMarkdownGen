@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -152,6 +153,12 @@ bool NamespaceHasTypeGrouping(string @namespace)
     => typeCounts is not null && typeCounts.TryGetValue(@namespace, out var count) &&
        count >= config.TypesGrouping!.MinCount;
 
+string RemoveAfterBacktick(string uid)
+{
+    // This regex matches a backtick followed by any characters till the end of the string
+    return Regex.Replace(uid, "`.*$", "");
+}
+
 string Link(string uid, bool linkFromGroupedType, bool nameOnly = false, bool linkFromIndex = false)
 {
     var reference = items.FirstOrDefault(i => i.Uid == uid);
@@ -163,8 +170,17 @@ string Link(string uid, bool linkFromGroupedType, bool nameOnly = false, bool li
     }
 
     if (reference == null)
+    {
+        // Decode %2c and other URL encoded characters
+        uid = WebUtility.UrlDecode(uid);
+        
+        // Sometimes UIDs have a backtick in them, which is not allowed in markdown links
+        uid = RemoveAfterBacktick(uid);
+        
         // todo: try to resolve to msdn links if System namespace maybe
-        return $"`{uid.Replace('{', '<').Replace('}', '>')}`";
+        return $"`{uid.Replace('{', '<').Replace('}', '>')}` ";
+    }
+
     var name = nameOnly ? reference.Name : reference.FullName;
     var dots = linkFromIndex ? "./" : linkFromGroupedType ? "../../" : "../";
     var extension = linkFromIndex ? ".md" : "";
@@ -194,13 +210,28 @@ string Link(string uid, bool linkFromGroupedType, bool nameOnly = false, bool li
     {
         var parent = items.FirstOrDefault(i => i.Uid == reference.Parent);
         if (parent == null)
-            return $"`{uid.Replace('{', '<').Replace('}', '>')}`";
+        {
+            // Decode %2c and other URL encoded characters
+            uid = WebUtility.UrlDecode(uid);
+        
+            // Sometimes UIDs have a backtick in them, which is not allowed in markdown links
+            uid = RemoveAfterBacktick(uid);
+            
+            return $"`{uid.Replace('{', '<').Replace('}', '>')}` ";
+        }
         return
             $"[{HtmlEscape(name)}]({FileEscape($"{dots}{reference.Namespace}{(NamespaceHasTypeGrouping(parent.Namespace) ? $"/{GetTypePathPart(parent.Type)}" : "")}/{parent.Name}{extension}")}#{reference.Name.ToLower().Replace("(", "").Replace(")", "").Replace("?", "")})";
     }
 }
 
-string? GetSummary(string? summary, bool linkFromGroupedType)
+string? StripHtml(string? input)
+{
+    if (string.IsNullOrEmpty(input))
+        return input;
+    return Regex.Replace(input, "<.*?>", string.Empty);
+}
+
+string? GetSummary(string? summary, bool linkFromGroupedType, bool escapeHtml=false)
 {
     if (summary == null)
         return null;
@@ -217,7 +248,10 @@ string? GetSummary(string? summary, bool linkFromGroupedType)
     if (config.ForceNewline)
         summary = summary.Replace("\n", config.ForcedNewline);
 
-    return HtmlEscape(summary);
+    // Decode all HTML entities to their corresponding characters
+    summary = WebUtility.HtmlDecode(summary);
+    
+    return escapeHtml ? HtmlEscape(summary) : summary; // We'll handle HTML escaping separately
 }
 
 stopwatch.Restart();
@@ -244,8 +278,14 @@ await Parallel.ForEachAsync(items, async (item, _) =>
         str.AppendLine("title: " + item.Type + " " + item.Name);
         str.AppendLine("sidebar_label: " + item.Name);
         if (item.Summary != null)
-            // todo: run a regex replace to get rid of hyperlinks and inline code blocks?
-            str.AppendLine($"description: \"{GetSummary(item.Summary, isGroupedType)?.Trim().Replace("\"", "\\\"")}\"");
+        {
+            // For frontmatter description: strip HTML
+            var description = StripHtml(GetSummary(item.Summary, isGroupedType, escapeHtml: true)?.Trim());
+            if (!string.IsNullOrEmpty(description))
+            {
+                str.AppendLine($"description: \"{description.Replace("\"", "\\\"")}\"");
+            }
+        }
         str.AppendLine("---");
         str.AppendLine($"# {item.Type} {HtmlEscape(item.Name)}");
         str.AppendLine(GetSummary(item.Summary, isGroupedType)?.Trim());
@@ -506,8 +546,8 @@ await Parallel.ForEachAsync(items, async (item, _) =>
 {
     var str = new StringBuilder();
     str.AppendLine("---");
-    str.AppendLine("title: Index");
-    str.AppendLine("sidebar_label: Index");
+    str.AppendLine("title: Overview");
+    str.AppendLine("sidebar_label: Overview");
     str.AppendLine("sidebar_position: 0");
     str.AppendLine($"slug: {config.IndexSlug}");
     str.AppendLine("---");
