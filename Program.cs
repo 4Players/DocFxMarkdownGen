@@ -16,9 +16,7 @@ using YamlDotNet.Serialization.NamingConventions;
 Options.UseAnsi = false;
 if (Environment.GetEnvironmentVariable("JAN_DEBUG") == "1")
     Options.LogLevel = LogLevel.Debug;
-var versionString = Assembly.GetEntryAssembly()?
-    .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
-    .InformationalVersion ?? Assembly.GetExecutingAssembly().GetName().Version?.ToString();
+var versionString = Assembly.GetExecutingAssembly().GetName().Version?.ToString();
 WriteLine($"DocFxMarkdownGen v{versionString} running...");
 
 var xrefRegex = new Regex("<xref href=\"(.+?)\" data-throw-if-not-resolved=\"false\"></xref>", RegexOptions.Compiled);
