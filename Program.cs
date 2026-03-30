@@ -229,14 +229,14 @@ string? StripHtml(string? input)
     return Regex.Replace(input, "<.*?>", string.Empty);
 }
 
-string? GetSummary(string? summary, bool linkFromGroupedType, bool escapeHtml=false)
+string? GetSummary(string? summary, bool linkFromGroupedType, bool escapeHtml=false, bool linkFromIndex = false)
 {
     if (summary == null)
         return null;
     summary = xrefRegex.Replace(summary, match =>
     {
         var uid = match.Groups[1].Value;
-        return Link(uid, linkFromGroupedType);
+        return Link(uid, linkFromGroupedType, false, linkFromIndex);
     });
     summary = langwordXrefRegex.Replace(summary, match => $"`{match.Groups[1].Value}`");
     summary = codeBlockRegex.Replace(summary, match => $"```csharp\n{match.Groups[1].Value.Trim()}\n```");
@@ -271,10 +271,16 @@ await Parallel.ForEachAsync(items, async (item, _) =>
     if (item.CommentId.StartsWith("T:"))
     {
         var isGroupedType = typeCounts != null && typeCounts[item.Namespace] >= config.TypesGrouping!.MinCount;
+        var linkFromIndex = (item.Namespace == "Global");
+        
         var str = new StringBuilder();
         str.AppendLine("---");
         str.AppendLine("title: " + item.Type + " " + item.Name);
         str.AppendLine("sidebar_label: " + item.Name);
+        if (!string.IsNullOrEmpty(config.SeoTitlePrefix))
+        {
+            str.AppendLine($"seoTitle: {config.SeoTitlePrefix} - {item.Type} {item.Name}");
+        }
         if (item.Summary != null)
         {
             // For frontmatter description: strip HTML
@@ -286,7 +292,7 @@ await Parallel.ForEachAsync(items, async (item, _) =>
         }
         str.AppendLine("---");
         str.AppendLine($"# {item.Type} {HtmlEscape(item.Name)}");
-        str.AppendLine(GetSummary(item.Summary, isGroupedType)?.Trim());
+        str.AppendLine(GetSummary(item.Summary, isGroupedType, false, linkFromIndex)?.Trim());
         str.AppendLine();
         //str.AppendLine($"###### **Assembly**: {item.Assemblies[0]}.dll");
         Declaration(str, item);
@@ -296,7 +302,7 @@ await Parallel.ForEachAsync(items, async (item, _) =>
             str.Append("**Inheritance:** ");
             for (int i = 0; i < item.Inheritance.Length; i++)
             {
-                str.Append(Link(item.Inheritance[i], isGroupedType));
+                str.Append(Link(item.Inheritance[i], isGroupedType, false, linkFromIndex));
                 if (i != item.Inheritance.Length - 1)
                     str.Append(" -> ");
             }
@@ -312,7 +318,7 @@ await Parallel.ForEachAsync(items, async (item, _) =>
 
             for (var i = 0; i < item.DerivedClasses.Length; i++)
             {
-                str.Append(Link(item.DerivedClasses[i], isGroupedType));
+                str.Append(Link(item.DerivedClasses[i], isGroupedType, false, linkFromIndex));
                 if (i != item.DerivedClasses.Length - 1)
                     str.Append(", ");
             }
@@ -330,7 +336,7 @@ await Parallel.ForEachAsync(items, async (item, _) =>
 
             for (var i = 0; i < item.Implements.Length; i++)
             {
-                str.Append(Link(item.Implements[i], isGroupedType));
+                str.Append(Link(item.Implements[i], isGroupedType, false, linkFromIndex));
                 if (i != item.Implements.Length - 1)
                     str.Append(", ");
             }
@@ -348,7 +354,7 @@ await Parallel.ForEachAsync(items, async (item, _) =>
             foreach (var property in properties)
             {
                 str.AppendLine($"### {property.Name}");
-                str.AppendLine(GetSummary(property.Summary, isGroupedType)?.Trim());
+                str.AppendLine(GetSummary(property.Summary, isGroupedType, false, linkFromIndex)?.Trim());
                 Declaration(str, property);
             }
         }
@@ -361,7 +367,7 @@ await Parallel.ForEachAsync(items, async (item, _) =>
             foreach (var field in fields)
             {
                 str.AppendLine($"### {field.Name}");
-                str.AppendLine(GetSummary(field.Summary, isGroupedType)?.Trim());
+                str.AppendLine(GetSummary(field.Summary, isGroupedType, false, linkFromIndex)?.Trim());
                 Declaration(str, field);
             }
         }
@@ -374,18 +380,18 @@ await Parallel.ForEachAsync(items, async (item, _) =>
             foreach (var method in methods)
             {
                 str.AppendLine($"### {HtmlEscape(method.Name)}");
-                str.AppendLine(GetSummary(method.Summary, isGroupedType)?.Trim());
+                str.AppendLine(GetSummary(method.Summary, isGroupedType, false, linkFromIndex)?.Trim());
                 Declaration(str, method);
                 if (!string.IsNullOrWhiteSpace(method.Syntax!.Return?.Type))
                 {
                     str.AppendLine();
                     str.AppendLine("##### Returns");
                     str.AppendLine();
-                    str.Append(Link(method.Syntax.Return.Type, isGroupedType).Trim());
+                    str.Append(Link(method.Syntax.Return.Type, isGroupedType, false, linkFromIndex).Trim());
                     if (string.IsNullOrWhiteSpace(method.Syntax.Return?.Description))
                         str.AppendLine();
                     else
-                        str.Append(": " + GetSummary(method.Syntax.Return.Description, isGroupedType));
+                        str.Append(": " + GetSummary(method.Syntax.Return.Description, isGroupedType, false, linkFromIndex));
                 }
 
                 if (method.Syntax.Parameters is { Length: > 0 })
@@ -399,7 +405,7 @@ await Parallel.ForEachAsync(items, async (item, _) =>
                         str.AppendLine("|:--- |:--- |:--- |");
                         foreach (var parameter in method.Syntax.Parameters)
                             str.AppendLine(
-                                $"| {Link(parameter.Type, isGroupedType)} | *{parameter.Id}* | {GetSummary(parameter.Description, isGroupedType)} |");
+                                $"| {Link(parameter.Type, isGroupedType, false, linkFromIndex)} | *{parameter.Id}* | {GetSummary(parameter.Description, isGroupedType, false, linkFromIndex)} |");
                     }
                     else
                     {
@@ -407,7 +413,7 @@ await Parallel.ForEachAsync(items, async (item, _) =>
                         str.AppendLine("|:--- |:--- |");
                         foreach (var parameter in method.Syntax.Parameters)
                             str.AppendLine(
-                                $"| {Link(parameter.Type, isGroupedType)} | *{parameter.Id}* |");
+                                $"| {Link(parameter.Type, isGroupedType, false, linkFromIndex)} | *{parameter.Id}* |");
                     }
 
                     str.AppendLine();
@@ -422,11 +428,11 @@ await Parallel.ForEachAsync(items, async (item, _) =>
                         str.AppendLine("|:--- |:--- |");
                         foreach (var typeParameter in method.Syntax.TypeParameters)
                             str.AppendLine(
-                                $"| {Link(typeParameter.Id, isGroupedType)} | {typeParameter.Description} |");
+                                $"| {Link(typeParameter.Id, isGroupedType, false, linkFromIndex)} | {typeParameter.Description} |");
                     }
                     else
                         foreach (var typeParameter in method.Syntax.TypeParameters)
-                            str.AppendLine($"* {Link(typeParameter.Id, isGroupedType)}");
+                            str.AppendLine($"* {Link(typeParameter.Id, isGroupedType, false, linkFromIndex)}");
                 }
 
                 if (method.Exceptions is { Length: > 0 })
@@ -438,8 +444,8 @@ await Parallel.ForEachAsync(items, async (item, _) =>
                     {
                         // those two spaces are there so that we can have a line break without too much spacing
                         // before the next line
-                        str.AppendLine($"{Link(exception.Type, isGroupedType)}  ");
-                        str.AppendLine(GetSummary(exception.Description, isGroupedType)?.Trim());
+                        str.AppendLine($"{Link(exception.Type, isGroupedType, false, linkFromIndex)}  ");
+                        str.AppendLine(GetSummary(exception.Description, isGroupedType, false, linkFromIndex)?.Trim());
                     }
                 }
             }
@@ -453,13 +459,13 @@ await Parallel.ForEachAsync(items, async (item, _) =>
             foreach (var @event in events)
             {
                 str.AppendLine($"### {HtmlEscape(@event.Name)}");
-                str.AppendLine(GetSummary(@event.Summary, isGroupedType)?.Trim());
+                str.AppendLine(GetSummary(@event.Summary, isGroupedType, false, linkFromIndex)?.Trim());
                 Declaration(str, @event);
                 str.AppendLine("##### Event Type");
                 if (@event.Syntax!.Return!.Description == null)
-                    str.AppendLine(Link(@event.Syntax.Return.Type, isGroupedType).Trim());
+                    str.AppendLine(Link(@event.Syntax.Return.Type, isGroupedType, false, linkFromIndex).Trim());
                 else
-                    str.AppendLine(Link(@event.Syntax.Return.Type, isGroupedType).Trim() + ": " +
+                    str.AppendLine(Link(@event.Syntax.Return.Type, isGroupedType, false, linkFromIndex).Trim() + ": " +
                                    @event.Syntax.Return.Description);
             }
         }
@@ -472,7 +478,7 @@ await Parallel.ForEachAsync(items, async (item, _) =>
             str.AppendLine();
             foreach (var implemented in item.Implements)
             {
-                str.AppendLine($"* {Link(implemented, isGroupedType)}");
+                str.AppendLine($"* {Link(implemented, isGroupedType, false, linkFromIndex)}");
             }
         }
 
@@ -494,7 +500,7 @@ await Parallel.ForEachAsync(items, async (item, _) =>
                 if (method == null)
                     str.AppendLine($"* {extMethod.Replace("{", "&#123;").Replace("}", "&#125;")}");
                 else
-                    str.AppendLine($"* {Link(method.Uid, isGroupedType)}");
+                    str.AppendLine($"* {Link(method.Uid, isGroupedType, false, linkFromIndex)}");
             }
         }
 
@@ -522,6 +528,10 @@ await Parallel.ForEachAsync(items, async (item, _) =>
         str.AppendLine("---");
         str.AppendLine("title: " + item.Type + " " + item.Name);
         str.AppendLine("sidebar_label: " + item.Name);
+        if (!string.IsNullOrEmpty(config.SeoTitlePrefix))
+        {
+            str.AppendLine($"seoTitle: {config.SeoTitlePrefix} - Namespace {item.Name}");
+        }
         str.AppendLine("---");
         str.AppendLine($"# Namespace {HtmlEscape(item.Name)}");
 
@@ -556,6 +566,10 @@ await Parallel.ForEachAsync(items, async (item, _) =>
     str.AppendLine("sidebar_label: Overview");
     str.AppendLine("sidebar_position: 0");
     str.AppendLine($"slug: {config.IndexSlug}");
+    if (!string.IsNullOrEmpty(config.SeoTitlePrefix))
+    {
+        str.AppendLine($"seoTitle: {config.SeoTitlePrefix} - Overview");
+    }
     str.AppendLine("---");
     str.AppendLine("# API Index");
     str.AppendLine("## Namespaces");
@@ -673,6 +687,7 @@ class Config
     public bool ForceNewline { get; set; } = false;
     public string ForcedNewline { get; set; } = "  \n";
     public bool RewriteInterlinks { get; set; } = false;
+    public string SeoTitlePrefix { get; set; } = "";
 }
 
 public class ConfigTypesGrouping
